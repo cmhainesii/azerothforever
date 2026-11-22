@@ -1,49 +1,138 @@
 # Repository for WoW Data Retrieval
 
-from typing import Any
-
-
 import aiohttp
-
 import os
 import time
 
-
-from utils import format_slug, get_xp_progress, get_wowhead_creature_link, VERSION
-
-from dotenv import load_dotenv
-
-load_dotenv()
+from utils import *
 
 
-CLIENT_ID= os.getenv("BLIZZARD_CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("BLIZZARD_CLIENT_SECRET", "")
 
-async def get_valid_blizzard_token(session: aiohttp.ClientSession, token_cache: dict) -> str:
-    now = time.time()
 
-    cached_token = token_cache["access_token"]
-    expires_at = token_cache["expires_at"]
-    if isinstance(cached_token, str) and cached_token and isinstance(expires_at, float) and now < expires_at:
-        return cached_token
 
-    url = "https://oauth.battle.net/token"
-    #auth = aiohttp.BasicAuth(CLIENT_ID, CLIENT_SECRET)
-    headers = {"Authorization": aiohttp.encode_basic_auth(CLIENT_ID, CLIENT_SECRET)}
 
-    async with session.post(url, data={"grant_type": "client_credentials"}, headers=headers) as resp:
-        resp.raise_for_status()
-        res = await resp.json()
 
-        token: str = res["access_token"]
-        expires_in: int = res.get("expires_in", 86400)
+async def get_realm_status(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        region = "us",
+        locale = "en_US",
+) -> dict:
 
-        token_cache["access_token"] = token
-        token_cache["expires_at"] = now + expires_in - 300
+    namespace = f"dynamic-{VERSION}-{region}"
+    ruleset_ids = [1, 2, 3, 15]
+    statuses = []
 
-        print("Fetched fresh Blizzard API token.")
+    for rid in ruleset_ids:
+        url = f"https://{region}.api.blizzard.com/data/wow/ruleset/{rid}"
+        params = {"namespace": namespace, "locale": locale}
+        headers = {"Authorization": f"Bearer {access_token}"}
 
-        return token
+        async with session.get(url, params=params, headers=headers) as response:
+            if response.status == 404:
+                return {"error": f"Error: Unable to determine server status."}
+            if response.status >= 400:
+                return {"error": "HTTP Error retrieving server status."}
+
+            data = await response.json()
+
+            statuses.append({
+                "id": data.get("id",0),
+                "name": data.get("name", "Unknown Name"),
+                "status": data.get("status", {}).get("name", "Unknown Status")
+            })
+
+    return {
+        "rulesets": statuses,
+        "version": VERSION
+    }
+
+async def get_character_stats(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        first_name: str,
+        last_name: str,
+        effective = True,
+        region = "us",
+        locale = "en_US",
+) -> dict:
+
+    char_slug = format_slug(f"{first_name} {last_name}")
+    namespace = f"profile-{VERSION}-{region}"
+    category = "effective" if effective else "base"
+
+    url = f"https://{region}.api.blizzard.com/profile/wow/character/{char_slug}/statistics"
+    params = {"namespace": namespace, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": "Error: Unable to determine server status. Try again later."}
+        if response.status >= 400:
+            return {"error": "HTTP Error retrieving server status. Try again later."}
+
+        data = await response.json()
+
+        name = f"{first_name.strip().lower().capitalize()} {last_name.strip().lower().capitalize()}"
+        strength = data.get("strength", {}).get(category, 0)
+        agility = data.get("agility", {}).get(category, 0)
+        stamina = data.get("stamina", {}).get(category, 0)
+        intellect = data.get("intellect", {}).get(category, 0)
+        spirit = data.get("spirit", {}).get(category, 0)
+        armor = data.get("armor", {}).get(category, 0)
+
+        return {
+            "name": name,
+            "strength": strength,
+            "agility": agility,
+            "stamina": stamina,
+            "intellect": intellect,
+            "spirit": spirit,
+            "armor": armor,
+        }
+    
+
+async def get_item_summary(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        item_id: str,
+        region = "us",
+        locale = "en_US",
+) -> dict:
+
+    namespace = f"static-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/data/wow/item/{item_id}"
+    params = {"namespace": namespace, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Error: Item {item_id} not found."}
+        if response.status >= 400:
+            return {"error": f"HTTP Error fetching item summary."}
+
+        data = await response.json()
+
+        name = data.get("name", "Unknown Item")
+        level = data.get("level", 0)
+        id = data.get("id", 0)
+        req_level = data.get("required_level", 0)
+        item_class = data.get("item_class", {}).get("name", "Unknown Class")
+        item_subclass = data.get("item_subclass", {}).get("name", "Unknown Subclass")
+        purchase_price = format_with_gold(data.get("purchase_price", 0))
+        wowhead_url = get_wowhead_item_link(id)
+
+        return {
+            "name": name,
+            "level": level,
+            "id": id,
+            "req_level": req_level,
+            "item_class": item_class,
+            "item_subclass": item_subclass,
+            "purchase_price": purchase_price,
+            "wowhead_url": wowhead_url,
+        }
 
 
 async def get_creature_summary(
@@ -291,7 +380,7 @@ async def get_character_summary(
     url = f"https://{region}.api.blizzard.com/profile/wow/character/{char_name}"
     params = {"namespace": namespace, "locale": locale}
     headers = {"Authorization": f"Bearer {access_token}"}
-
+    assert session is not None
     async with session.get(url, params=params, headers=headers) as response:
         if response.status == 404:
             return {"error": f"Character '{first_name.lower().capitalize()} {last_name.lower().capitalize()}' not found."}

@@ -63,7 +63,7 @@ def format_with_gold(copper_in) -> str :
 def format_slug(name: str) -> str:
     cleaned = name.strip().lower().replace(' ', '-').replace("'", "")
     # Percent-encode Unicode characters (e.g. 'ö' becomes '%C3%B6')
-    return urllib.parse.quote(cleaned)
+    return urllib.parse.quote(cleaned, safe="")
 
 def get_xp_progress(level: int, current_xp: int) -> str:
 
