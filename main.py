@@ -1,6 +1,6 @@
 import discord
 from utils import WOW_CLASS_COLORS
-from repo import get_character_equipment, get_valid_blizzard_token, get_character_summary
+from repo import get_character_equipment, get_character_specs, get_valid_blizzard_token, get_character_summary
 import aiohttp
 import os
 from discord.ext import commands
@@ -32,6 +32,32 @@ async def on_ready():
 @bot.command()
 async def hello(ctx: commands.Context):
     await ctx.send("Hello!")
+
+
+# @bot.command(name="spec")
+# async def character_spec(ctx: commands.Context, first_name: str, last_name: str) -> None:
+#     async with aiohttp.ClientSession() as session:
+#         token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
+#         spec = await get_character_specs(session, token, first_name, last_name)
+
+#         if not spec or len(spec) == 0:
+#             error_embed = discord.Embed(
+#                 title="Specializations Not Found",
+#                 description="WoW API Error",
+#                 color=discord.Color.red()
+#             )
+#             await ctx.send(embed=error_embed)
+#             return
+
+#         embed = discord.Embed(
+#             title="Specialization:",
+#             description=f"**{spec[0]}**",
+#             color=discord.Color.blue()
+#         )
+
+#         spec = spec[1:]
+
+        
 
 
 @bot.command(name="equip")
@@ -66,7 +92,7 @@ async def character_equip(ctx: commands.Context, first_name: str, last_name: str
     
 
 @bot.command(name="char")
-async def character_summary2(ctx: commands.Context, first_name: str, last_name: str) -> None:
+async def character_summary(ctx: commands.Context, first_name: str, last_name: str) -> None:
     async with aiohttp.ClientSession() as session:
         token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
         summary = await get_character_summary(session, token, first_name, last_name)
@@ -99,6 +125,54 @@ async def character_summary2(ctx: commands.Context, first_name: str, last_name: 
     embed.add_field(name="Guild", value=guild_display, inline=True)
 
     embed.set_footer(text=f"WoW: {summary['version'].capitalize()} Character Summary")
+
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="specs", aliases=["spec", "talents"])
+async def character_specs(ctx: commands.Context, first_name: str, last_name: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
+        specs = await get_character_specs(session, token, first_name, last_name)
+
+    if not specs or "error" in specs:
+        error_embed = discord.Embed(
+            title="Specializations Not Found",
+            description=specs.get("error", "Unknown error"),
+            color=discord.Color.red(),
+        )
+        await ctx.send(embed=error_embed)
+        return
+
+    embed = discord.Embed(
+        title="Specializations:",
+        description=f"**{specs['character']}**",
+        color=discord.Color.blue(),
+    )
+
+    trees: list[dict] = specs.get("trees", [])
+    for tree_data in trees:
+        tree_name: str = tree_data.get("tree", "Unknown Tree")
+        talents: list[dict[str, str | int]] = tree_data.get("talents", [])
+
+        total_points: int = sum(int(t.get("rank", 0)) for t in talents)
+        talent_lines: list[str] = [
+            f"• {t.get('name', 'Unknown')} ({t.get('rank', 0)})"
+            for t in talents
+        ]
+
+        field_value: str = "\n".join(talent_lines) if talent_lines else "No points spent"
+        # Discord caps individual embed field values at 1024 characters
+        if len(field_value) > 1024:
+            field_value = field_value[:1021] + "..."
+
+        embed.add_field(
+            name=f"{tree_name} ({total_points})",
+            value=field_value,
+            inline=True,
+        )
+
+    embed.set_footer(text=f"WoW: {specs['version'].capitalize()} Specialization Summary")
 
     await ctx.send(embed=embed)
 

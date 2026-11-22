@@ -2,6 +2,7 @@
 
 from typing import Any
 
+
 import aiohttp
 
 import os
@@ -87,13 +88,68 @@ async def get_character_equipment(
             "equipment": equipment
         }
 
+
+async def get_character_specs(
+    session: aiohttp.ClientSession,
+    access_token: str,
+    first_name: str,
+    last_name: str,
+    region = "us",
+    locale = "en_US",
+) -> dict:
+    char_slug = format_slug(f"{first_name} {last_name}")
+    full_name = f"{first_name.lower().capitalize()} {last_name.lower().capitalize()}"
+    namespace = f"profile-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/profile/wow/character/{char_slug}/specializations"
+    params = {"namespace": namespace, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Character '{full_name}' not found."}
+        if response.status >= 400:
+            return {"error": f"HTTP Error fetching specializations: {response.status}"}
+
+        data: dict = await response.json()
+
+        spec_groups: list[dict] = data.get("specialization_groups", [])
+        active_group = next((g for g in spec_groups if g.get("is_active")), None)
+
+        if not active_group:
+            return {"error": f"No active specialization found for '{full_name}'."}
+
+        trees: list[dict] = []
+        for tree in active_group.get("specializations") or []:
+            tree_name: str = tree.get("specialization", {}).get("name", "Unknown Tree")
+            talents_raw: list[dict] = tree.get("talents") or []
+
+            talents: list[dict[str, str | int]] = [
+                {
+                    "name": t.get("talent", {}).get("name", "Unknown"),
+                    "rank": t.get("talent_rank", 0),
+                }
+                for t in talents_raw
+            ]
+
+            trees.append({
+                "tree": tree_name,
+                "talents": talents,
+            })
+
+        return {
+            "character": full_name,
+            "version": VERSION,
+            "trees": trees,
+        }
+
 async def get_character_summary(
         session: aiohttp.ClientSession,
         access_token: str,
         first_name: str,
         last_name: str,
-        region: str = "us",
-        locale: str = "en_US"
+        region = "us",
+        locale = "en_US"
 ) -> dict:
 
     char_name = format_slug(f"{first_name} {last_name}")
