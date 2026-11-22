@@ -84,6 +84,53 @@ async def get_creature_summary(
             "wowhead_url": wowhead_url
         }
 
+async def search_items(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        search_query: str,
+        max_results = 24,
+        region = "us",
+        locale = "en_US",
+) -> dict:
+
+    namespace = f"static-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/data/wow/search/item"
+    params = {"namespace": namespace, f"name.{locale}": search_query,
+              "orderby": "id", "_page": 1, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    search_terms = search_query.lower().split()
+    items_found = []
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Error: Item '{search_query}' not found."}
+        if response.status >= 400:
+            return {"error": "HTTP Error searching items."}
+
+        data = await response.json()
+
+        results = data.get("results", [])
+
+        if not results or len(results) == 0:
+            return {"error": "No items found."}
+
+        for item in results:
+            current = item.get("data", {})
+            id = current.get("id")
+            name = current.get("name", {}).get(locale, "Unknown")
+
+            if id and all(term in name.lower() for term in search_terms):
+                items_found.append({"id": id, "name": name})
+            if len(items_found) > max_results:
+                break
+
+        return {
+            "query": search_query,
+            "results": items_found
+        }
+
 
 async def search_creatures(
         session: aiohttp.ClientSession,

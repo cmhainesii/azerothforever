@@ -2,7 +2,7 @@ from pydoc import text
 
 import discord
 from utils import WOW_CLASS_COLORS
-from repo import get_character_equipment, get_character_specs, get_creature_summary, get_valid_blizzard_token, get_character_summary, search_creatures
+from repo import get_character_equipment, get_character_specs, get_creature_summary, get_valid_blizzard_token, get_character_summary, search_creatures, search_items
 import aiohttp
 import os
 from discord.ext import commands
@@ -35,31 +35,6 @@ async def on_ready():
 async def hello(ctx: commands.Context):
     await ctx.send("Hello!")
 
-
-# @bot.command(name="spec")
-# async def character_spec(ctx: commands.Context, first_name: str, last_name: str) -> None:
-#     async with aiohttp.ClientSession() as session:
-#         token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
-#         spec = await get_character_specs(session, token, first_name, last_name)
-
-#         if not spec or len(spec) == 0:
-#             error_embed = discord.Embed(
-#                 title="Specializations Not Found",
-#                 description="WoW API Error",
-#                 color=discord.Color.red()
-#             )
-#             await ctx.send(embed=error_embed)
-#             return
-
-#         embed = discord.Embed(
-#             title="Specialization:",
-#             description=f"**{spec[0]}**",
-#             color=discord.Color.blue()
-#         )
-
-#         spec = spec[1:]
-
-        
 
 
 @bot.command(name="equip")
@@ -161,9 +136,36 @@ async def creature_summary(ctx: commands.Context, creature_id: str) -> None:
     await ctx.send(embed=embed)
     
 
+@bot.command(name="item_search", aliases=["search", "isearch", "is"])
+async def item_search(ctx: commands.Context, *, search_query: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
+        data = await search_items(session, token, search_query)
+
+    if not data or "error" in data:
+        error_embed = discord.Embed(
+            title="Item Search Error",
+            description=data.get("error", "Unknown error."),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        return
+
+    # Build embed response
+    embed = discord.Embed(
+        title="Item Search",
+        description="Results:",
+        color=discord.Color.blue()
+    )
+    for r in data.get("results", []):
+        embed.add_field(name=r.get("id", 0), value=r.get("name", "Unknown Item"), inline=True)
+    embed.set_footer(text="WoW Forever Item Search")
+
+    await ctx.send(embed=embed)
+        
 
 
-@bot.command(name="csearch")
+@bot.command(name="creature_search", aliases=["csearch", "cs"])
 async def creature_search(ctx: commands.Context, *, search_query: str) -> None:
     async with aiohttp.ClientSession() as session:
         token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
@@ -171,8 +173,8 @@ async def creature_search(ctx: commands.Context, *, search_query: str) -> None:
 
     if not data or "error" in data:
         error_embed = discord.Embed(
-            title="Creature Search Results:",
-            description=data.get("error", "Unknown error"),
+            title="Creature Search Error",
+            description=data.get("error", "Unknown error."),
             color=discord.Color.red()
         )
         await ctx.send(embed=error_embed)
