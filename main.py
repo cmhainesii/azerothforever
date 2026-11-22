@@ -1,6 +1,8 @@
+from pydoc import text
+
 import discord
 from utils import WOW_CLASS_COLORS
-from repo import get_character_equipment, get_character_specs, get_valid_blizzard_token, get_character_summary
+from repo import get_character_equipment, get_character_specs, get_creature_summary, get_valid_blizzard_token, get_character_summary, search_creatures
 import aiohttp
 import os
 from discord.ext import commands
@@ -128,6 +130,68 @@ async def character_summary(ctx: commands.Context, first_name: str, last_name: s
 
     await ctx.send(embed=embed)
 
+@bot.command(name="creature")
+async def creature_summary(ctx: commands.Context, creature_id: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
+        data = await get_creature_summary(session, token, creature_id)
+
+    if not data or "error" in data:
+        error_embed = discord.Embed(
+            title="Creature Summary Error:",
+            description=data.get("error", "Unknown error"),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        return
+
+    embed = discord.Embed(
+        title="Creature Summary:",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(name="Name", value=data.get("name", "Unknown Name"), inline=True)
+    embed.add_field(name="WowHead Link", value=data.get("wowhead_url",""), inline=False)
+    embed.add_field(name="Type", value=data.get("type", "Unknown Type"), inline=True)
+    embed.add_field(name="Family", value=data.get("family", "Unknown Family"), inline=True)
+    embed.add_field(name="Tameable?", value=data.get("tameable", "Unknown"), inline=True)
+
+    embed.set_footer(text="WoW Forever Creature Summary")
+
+    await ctx.send(embed=embed)
+    
+
+
+
+@bot.command(name="csearch")
+async def creature_search(ctx: commands.Context, *, search_query: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        token = await get_valid_blizzard_token(session, _TOKEN_CACHE)
+        data = await search_creatures(session, token, search_query)
+
+    if not data or "error" in data:
+        error_embed = discord.Embed(
+            title="Creature Search Results:",
+            description=data.get("error", "Unknown error"),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        return
+
+    embed = discord.Embed(
+        title="Creature Search Results:",
+        description="Search WoW Forever Creatures",
+        color=discord.Color.blue()
+    )
+
+    for r in data.get("results", []):
+        embed.add_field(name=r.get("id", 0), value=r.get("name", "Unknown Creature"), inline=True)
+
+    embed.set_footer(text=f"WoW Forever Creature Search")
+
+    await ctx.send(embed=embed)
+        
+    
 
 @bot.command(name="specs", aliases=["spec", "talents"])
 async def character_specs(ctx: commands.Context, first_name: str, last_name: str) -> None:
@@ -172,7 +236,7 @@ async def character_specs(ctx: commands.Context, first_name: str, last_name: str
             inline=True,
         )
 
-    embed.set_footer(text=f"WoW: {specs['version'].capitalize()} Specialization Summary")
+    embed.set_footer(text=f"WoW {specs['version'].capitalize()} Specialization Summary")
 
     await ctx.send(embed=embed)
 

@@ -9,7 +9,7 @@ import os
 import time
 
 
-from utils import format_slug, get_xp_progress, VERSION
+from utils import format_slug, get_xp_progress, get_wowhead_creature_link, VERSION
 
 from dotenv import load_dotenv
 
@@ -45,6 +45,92 @@ async def get_valid_blizzard_token(session: aiohttp.ClientSession, token_cache: 
 
         return token
 
+
+async def get_creature_summary(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        creature_id: str,
+        region = "us",
+        locale = "en_US"
+) -> dict:
+
+    namespace = f"static-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/data/wow/creature/{creature_id}"
+    params = {"namespace": namespace, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Error: Creature {id} not found."}
+        if response.status >= 400:
+            return {"error": "HTTP Error fetching creature summary."}
+
+        data = await response.json()
+
+        c_id = data.get("id", creature_id)
+        c_name = data.get("name", "Unknown")
+        t_name = data.get("type", {}).get("name", "Unknown")
+        family = data.get("family", {}).get("name", "Unknown")
+        tameable = "Yes" if data.get("is_tameable") else "No"
+        wowhead_url = get_wowhead_creature_link(creature_id)
+
+        return {
+            "id": c_id,
+            "name": c_name,
+            "type": t_name,
+            "family": family,
+            "tameable": tameable,
+            "wowhead_url": wowhead_url
+        }
+
+
+async def search_creatures(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        query: str,
+        max_results = 24,
+        region = "us",
+        locale = "en_US"
+) -> dict:
+
+    namespace = f"static-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/data/wow/search/creature"
+    params = {"namespace": namespace, f"name.{locale}": query, "orderby": "id", "_page": 1, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+
+    search_terms = query.lower().split()
+    creatures_found = []
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Error: Creature '{query}' not found."}
+        if response.status >= 400:
+            return {"error": "HTTP Error searching creatures."}
+
+        data = await response.json()
+
+        results = data.get("results", [])
+
+        if not results or len(results) == 0:
+            return {"error": "No creatures found."}
+
+        for item in results:
+            current = item.get("data", {})
+            id = current.get("id")
+            name = current.get("name", {}).get(locale, "Unknown")
+
+            if id and all(term in name.lower() for term in search_terms):
+                creatures_found.append({"id": id, "name": name})
+            if len(creatures_found) > max_results:
+                break
+
+        return {
+            "query": query,
+            "results": creatures_found
+        }
 
 
 async def get_character_equipment(
