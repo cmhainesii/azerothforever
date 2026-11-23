@@ -365,6 +365,59 @@ async def get_character_specs(
             "trees": trees,
         }
 
+
+async def get_profession_summary(
+        session: aiohttp.ClientSession,
+        access_token: str,
+        first_name: str,
+        last_name: str,
+        region = "us",
+        locale = "en_US"
+) -> dict:
+    char_slug = format_slug(f"{first_name} {last_name}")
+    char_name = f"{first_name.strip().lower().capitalize()} {last_name.strip().lower().capitalize()}"
+    namespace = f"profile-{VERSION}-{region}"
+
+    url = f"https://{region}.api.blizzard.com/profile/wow/character/{char_slug}/professions"
+    params = {"namespace": namespace, "locale": locale}
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with session.get(url, params=params, headers=headers) as response:
+        if response.status == 404:
+            return {"error": f"Profession data for '{char_name}' not found."}
+        if response.status >= 400:
+            return {"error": f"HTTP Error fetching profession data: {response.status}"}
+
+        data = await response.json()
+
+        if not data:
+            return {"error": f"Unable to retrieve profession data for '{char_name}'."}
+        
+        primary = []
+        secondary = []
+
+        primaries = data.get("primaries", [])
+        secondaries = data.get("secondaries", [])
+
+        for p in primaries:
+            primary.append({
+                "name": p.get("profession", {}).get("name", "Unknown Profession Name"),
+                "skill": p["tiers"][0]["skill_points"],
+                "max_skill": p["tiers"][0]["max_skill_points"]
+            })
+
+        for p in secondaries:
+            secondary.append({
+                            "name": p.get("profession", {}).get("name", "Unknown Profession Name"),
+                            "skill": p["tiers"][0]["skill_points"],
+                            "max_skill": p["tiers"][0]["max_skill_points"]
+                        })
+
+        return {
+            "primary": primary,
+            "secondary": secondary
+        }
+
 async def get_character_summary(
         session: aiohttp.ClientSession,
         access_token: str,
@@ -380,7 +433,7 @@ async def get_character_summary(
     url = f"https://{region}.api.blizzard.com/profile/wow/character/{char_name}"
     params = {"namespace": namespace, "locale": locale}
     headers = {"Authorization": f"Bearer {access_token}"}
-    assert session is not None
+    
     async with session.get(url, params=params, headers=headers) as response:
         if response.status == 404:
             return {"error": f"Character '{first_name.lower().capitalize()} {last_name.lower().capitalize()}' not found."}

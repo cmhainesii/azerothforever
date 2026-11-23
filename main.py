@@ -1,3 +1,5 @@
+from turtle import title
+
 from repo import *
 from azeroth_bot import *
 import discord
@@ -33,6 +35,47 @@ async def hello(ctx: commands.Context):
     await ctx.send("Hello!")
 
 
+
+@bot.command(name="prof")
+async def character_professions(ctx: commands.Context, first_name: str, last_name: str) -> None:
+    assert bot.session is not None
+    token = await bot.get_valid_blizzard_token()
+    professions = await get_profession_summary(bot.session, token, first_name, last_name)
+    char_name = f"{first_name.strip().lower().capitalize()} {last_name.strip().lower().capitalize()}"
+
+    if not professions or "error" in professions:
+        error_embed = discord.Embed(
+            title="Error Retrieving Profession Data",
+            description=professions.get("error", "An unknown error has occurred."),
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=error_embed)
+        return
+
+    response_embed = discord.Embed(
+        title="Profession Summary",
+        description=f"For: **{char_name}**",
+        color=discord.Color.orange()
+    )
+
+    
+
+    primary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}"for p in professions["primary"]]
+    secondary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}" for p in professions["secondary"]]
+
+    response_embed.add_field(
+        name="Primary Professions:",
+        value="\n".join(primary) if primary else "None",
+        inline=False
+    )
+
+    response_embed.add_field(
+        name="Secondary Professions:",
+        value="\n".join(secondary) if secondary else "None",
+        inline=False
+    )
+
+    await ctx.send(embed=response_embed)    
 
 @bot.command(name="equip", aliases=["equipment", "gear"])
 async def character_equip(ctx: commands.Context, first_name: str, last_name: str) -> None:
@@ -155,7 +198,7 @@ async def character_summary(ctx: commands.Context, first_name: str, last_name: s
     guild_display: str = raw_guild.replace(" | Guild: ", "") if raw_guild else "None"
 
     embed = discord.Embed(
-        title=f"{summary['first_name']} {summary['last_name']}:",
+        title=f"{summary['first_name']} {summary['last_name']}",
         description=f"Level **{summary['level']}** {summary['race']} {char_class}",
         color=embed_color
     )
