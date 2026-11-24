@@ -1,4 +1,5 @@
 import asyncio
+from pydoc import describe
 from turtle import title
 
 from repo import *
@@ -69,7 +70,7 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
         guild_display: str = raw_guild.replace(" | Guild: ", "") if raw_guild else "None"
 
         embed = discord.Embed(
-            title=f"{summary['first_name']} {summary['last_name']}",
+            title=char_name,
             description=f"Level **{summary['level']}** {summary['race']} {char_class}",
             color=embed_color)
 
@@ -79,7 +80,7 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
         embed.add_field(name="Ruleset", value=summary['ruleset'], inline=True)
         embed.add_field(name="Guild", value=guild_display, inline=True)
 
-        embed.set_footer(text=f"WoW: {summary['version'].capitalize()} Character Summary")
+        embed.set_footer(text=f"WoW {summary['version'].capitalize()}: Character Summary")
 
         responses.append(embed)
 
@@ -91,14 +92,13 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
             color=discord.Color.red()))
     else:
         embed = discord.Embed(
-            title=f"Equipment:",
-            description=f"**{first_name.lower().capitalize()} {last_name.lower().capitalize()}**",
+            description=f"**Equipment:**",
             color=discord.Color.blue())
 
         for piece in equip["equipment"]:
             embed.add_field(name=piece.get("slot"), value=piece.get("name"), inline=True)
 
-        embed.set_footer(text=f"WoW: {equip['version'].capitalize()} Equipment Summary")
+        embed.set_footer(text=f"WoW {equip['version'].capitalize()}: Equipment Summary")
         responses.append(embed)
 
     # Stats
@@ -112,12 +112,10 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
     
         
         embed = discord.Embed(
-            title="Character Effective Stats",
-            description="Results:",
+            description="**Stats:**",
             color=discord.Color.blue()
         )
 
-        embed.add_field(name="**Name: **", value=f"**{stats.get("name", "Unknown Name")}**", inline = False)
         embed.add_field(name="Strength", value=stats.get("strength", 0), inline=True)
         embed.add_field(name="Agility", value=stats.get("agility", 0), inline=True)
         embed.add_field(name="Stamina", value=stats.get("stamina", 0), inline=True)
@@ -140,9 +138,8 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
 
     else:
         embed = discord.Embed(
-        title="Profession Summary",
-        description=f"For: **{char_name}**",
-        color=discord.Color.orange())
+        description="**Professions:**",
+        color=discord.Color.blue())
 
         primary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}"for p in professions["primary"]]
         secondary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}" for p in professions["secondary"]]
@@ -159,6 +156,7 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
             inline=False
         )
 
+        embed.set_footer(text=f"WoW {VERSION.capitalize()}: Profession Summary")
         responses.append(embed)
 
     if not specs or "error" in specs:
@@ -170,8 +168,7 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
     else:
 
         embed = discord.Embed(
-            title="Specializations:",
-            description=f"**{specs['character']}**",
+            description="**Specialization:**",
             color=discord.Color.blue(),
         )
 
@@ -197,7 +194,7 @@ async def inspect_character(ctx: commands.Context, first_name: str, last_name:st
                 inline=True,
             )
 
-        embed.set_footer(text=f"WoW {specs['version'].capitalize()} Specialization Summary")
+        embed.set_footer(text=f"WoW {specs['version'].capitalize()}: Specialization Summary")
 
         responses.append(embed)
 
