@@ -366,7 +366,7 @@ async def get_character_specs(
         }
 
 
-async def get_profession_summary(
+async def get_character_professions(
         session: aiohttp.ClientSession,
         access_token: str,
         first_name: str,

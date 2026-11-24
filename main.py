@@ -1,3 +1,4 @@
+import asyncio
 from turtle import title
 
 from repo import *
@@ -36,11 +37,185 @@ async def hello(ctx: commands.Context):
 
 
 
+@bot.command(name="inspect")
+async def inspect_character(ctx: commands.Context, first_name: str, last_name:str) -> None:
+
+    assert bot.session is not None
+    token = await bot.get_valid_blizzard_token()
+    char_name = f"{first_name.strip().lower().capitalize()} {last_name.strip().lower().capitalize()}"
+
+    summary, equip, stats, professions, specs = await asyncio.gather(
+        get_character_summary(bot.session, token, first_name, last_name),
+        get_character_equipment(bot.session, token, first_name, last_name),
+        get_character_stats(bot.session, token, first_name, last_name),
+        get_character_professions(bot.session, token, first_name, last_name),
+        get_character_specs(bot.session, token, first_name, last_name)
+    )
+
+
+    responses = []
+    errors = []
+
+    if not summary or "error" in summary:
+        errors.append(discord.Embed(
+            title="Character Summary Not Found",
+            description=summary.get("error", "An unknown error has occurred."),
+            color=discord.Color.red()))
+    else:
+        char_class: str = summary["class"]
+        embed_color = WOW_CLASS_COLORS.get(char_class, 0x5865F2)
+
+        raw_guild: str = summary['guild']
+        guild_display: str = raw_guild.replace(" | Guild: ", "") if raw_guild else "None"
+
+        embed = discord.Embed(
+            title=f"{summary['first_name']} {summary['last_name']}",
+            description=f"Level **{summary['level']}** {summary['race']} {char_class}",
+            color=embed_color)
+
+        embed.add_field(name="Item Level", value=str(summary['ilvl']), inline=True)
+        embed.add_field(name="XP Progress", value=f"{summary['xp_progress_pct']}%", inline=True)
+        embed.add_field(name="Faction", value=summary['faction'], inline=True)
+        embed.add_field(name="Ruleset", value=summary['ruleset'], inline=True)
+        embed.add_field(name="Guild", value=guild_display, inline=True)
+
+        embed.set_footer(text=f"WoW: {summary['version'].capitalize()} Character Summary")
+
+        responses.append(embed)
+
+
+    if not equip or "error" in equip:
+        errors.append(discord.Embed(
+            title="Equipment Not Found",
+            description=equip.get("error"),
+            color=discord.Color.red()))
+    else:
+        embed = discord.Embed(
+            title=f"Equipment:",
+            description=f"**{first_name.lower().capitalize()} {last_name.lower().capitalize()}**",
+            color=discord.Color.blue())
+
+        for piece in equip["equipment"]:
+            embed.add_field(name=piece.get("slot"), value=piece.get("name"), inline=True)
+
+        embed.set_footer(text=f"WoW: {equip['version'].capitalize()} Equipment Summary")
+        responses.append(embed)
+
+    # Stats
+    if not stats or "error" in stats:
+        errors.append(discord.Embed(
+            title="Character Stats Error",
+            description=stats.get("error", "An unexpected error has occurred."),
+            color=discord.Color.red()))
+    
+    else:
+    
+        
+        embed = discord.Embed(
+            title="Character Effective Stats",
+            description="Results:",
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(name="**Name: **", value=f"**{stats.get("name", "Unknown Name")}**", inline = False)
+        embed.add_field(name="Strength", value=stats.get("strength", 0), inline=True)
+        embed.add_field(name="Agility", value=stats.get("agility", 0), inline=True)
+        embed.add_field(name="Stamina", value=stats.get("stamina", 0), inline=True)
+        embed.add_field(name="Intellect", value=stats.get("intellect", 0), inline=True)
+        embed.add_field(name="Spirit", value=stats.get("spirit", 0), inline=True)
+        embed.add_field(name="Armor", value=stats.get("armor", 0), inline=True)
+
+        embed.set_footer(text="WoW Forever Character Stats")
+
+        responses.append(embed)
+    
+    
+    # Professions
+
+    if not professions or "error" in professions:
+        errors.append(discord.Embed(
+            title="Error Retrieving Profession Data",
+            description=professions.get("error", "An unknown error has occurred."),
+            color=discord.Color.red()))
+
+    else:
+        embed = discord.Embed(
+        title="Profession Summary",
+        description=f"For: **{char_name}**",
+        color=discord.Color.orange())
+
+        primary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}"for p in professions["primary"]]
+        secondary = [f"**{p['name']}**: {p['skill']} / {p['max_skill']}" for p in professions["secondary"]]
+
+        embed.add_field(
+            name="Primary Professions:",
+            value="\n".join(primary) if primary else "None",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Secondary Professions:",
+            value="\n".join(secondary) if secondary else "None",
+            inline=False
+        )
+
+        responses.append(embed)
+
+    if not specs or "error" in specs:
+        errors.append(discord.Embed(
+            title="Specializations Not Found",
+            description=specs.get("error", "Unknown error"),
+            color=discord.Color.red()))
+        
+    else:
+
+        embed = discord.Embed(
+            title="Specializations:",
+            description=f"**{specs['character']}**",
+            color=discord.Color.blue(),
+        )
+
+        trees: list[dict] = specs.get("trees", [])
+        for tree_data in trees:
+            tree_name: str = tree_data.get("tree", "Unknown Tree")
+            talents: list[dict[str, str | int]] = tree_data.get("talents", [])
+
+            total_points: int = sum(int(t.get("rank", 0)) for t in talents)
+            talent_lines: list[str] = [
+                f"• {t.get('name', 'Unknown')} ({t.get('rank', 0)})"
+                for t in talents
+            ]
+
+            field_value: str = "\n".join(talent_lines) if talent_lines else "No points spent"
+            # Discord caps individual embed field values at 1024 characters
+            if len(field_value) > 1024:
+                field_value = field_value[:1021] + "..."
+
+            embed.add_field(
+                name=f"{tree_name} ({total_points})",
+                value=field_value,
+                inline=True,
+            )
+
+        embed.set_footer(text=f"WoW {specs['version'].capitalize()} Specialization Summary")
+
+        responses.append(embed)
+
+    
+    if responses:
+        await ctx.author.send(embeds=responses)
+
+    if errors:
+        await ctx.author.send(embeds=errors)
+
+    
+
+
 @bot.command(name="prof")
 async def character_professions(ctx: commands.Context, first_name: str, last_name: str) -> None:
     assert bot.session is not None
     token = await bot.get_valid_blizzard_token()
-    professions = await get_profession_summary(bot.session, token, first_name, last_name)
+    professions = await get_character_professions(bot.session, token, first_name, last_name)
     char_name = f"{first_name.strip().lower().capitalize()} {last_name.strip().lower().capitalize()}"
 
     if not professions or "error" in professions:
@@ -212,6 +387,7 @@ async def character_summary(ctx: commands.Context, first_name: str, last_name: s
     embed.set_footer(text=f"WoW: {summary['version'].capitalize()} Character Summary")
 
     await ctx.send(embed=embed)
+
 
 @bot.command(name="item")
 async def item_summary(ctx: commands.Context, item_id: str) -> None:
